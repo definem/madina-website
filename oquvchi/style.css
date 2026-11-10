@@ -57,6 +57,8 @@ input:focus,textarea:focus{border-color:var(--rose);box-shadow:0 0 0 4px rgba(22
 .opt .k{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#fbe9f0;color:var(--rose-deep);font-weight:800;font-size:14px}
 .opt.sel{border-color:var(--rose-deep);background:#fff0f5}.opt.sel .k{background:var(--rose-deep);color:#fff}
 .opt:disabled{cursor:default}
+.opt.ok{border-color:#1f9d5c;background:#d9f2e4;color:#145c36;font-weight:800}.opt.ok .k{background:#1f9d5c;color:#fff}
+.opt.bad{border-color:#d63a62;background:#fddde4;color:#a52047;font-weight:800}.opt.bad .k{background:#d63a62;color:#fff}
 .flash{text-align:center;color:#d63a62;font-weight:800;min-height:24px}
 .ring{width:160px;height:160px;border-radius:50%;margin:8px auto 14px;display:grid;place-items:center;background:conic-gradient(var(--c,var(--rose-deep)) calc(var(--p)*1%),#f3dfe7 0)}
 .ring span{width:126px;height:126px;border-radius:50%;background:#fff;display:grid;place-items:center;font:800 38px 'Playfair Display',serif;color:var(--plum)}

@@ -106,17 +106,21 @@ function showQuestion() {
   }, 100);
   window.scrollTo(0, 0);
 }
+function reveal(chosen) {            // to‘g‘ri javob — yashil, noto‘g‘ri tanlov — qizil
+  document.querySelectorAll(".opt").forEach(b => { if (b.dataset.o === "0") b.classList.add("ok"); });
+  if (chosen && chosen.dataset.o !== "0") chosen.classList.add("bad");
+}
 function lockOpts(){ document.querySelectorAll(".opt").forEach(b => b.disabled = true); }
 function answer(oi, btn) {
   if (locked) return; locked = true; clearInterval(timerH);
-  btn.classList.add("sel"); lockOpts();
+  lockOpts(); reveal(btn);
   run.ans[run.order[run.i]] = oi;      // 0 = to‘g‘ri variant
-  next(450);
+  next(1000);
 }
 function timeUp() {
-  if (locked) return; locked = true; lockOpts();
+  if (locked) return; locked = true; lockOpts(); reveal(null);
   $("#fl").textContent = "⏰ Vaqt tugadi!";
-  next(700);
+  next(1200);
 }
 function next(delay) { run.i++; store.set(K_RUN, run); setTimeout(showQuestion, delay); }
 

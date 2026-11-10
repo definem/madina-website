@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin — Bilim sinovi · SPD 905u</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="flower">🌸</div>
+  <span class="tag">Admin sahifasi</span>
+  <h1><em>Nerv sistemasi</em>, analizatorlar va yurak-qon tomir tizimi</h1>
+  <p>Savollar, to‘g‘ri javoblar va o‘quvchilar natijalarini kuzatish uchun o‘qituvchi paneli.</p>
+  <div class="by">Yaratuvchi: SPD 905u guruhi — Anvarova Madinaxon</div>
+  <div class="divider"></div>
+</header>
+
+<main class="wrap" id="app"></main>
+<div class="footer">© SPD 905u · Anvarova Madinaxon</div>
+
+<script src="common.js"></script>
+<script>
+/* Admin paroli (xohlasangiz o‘zgartiring). Eslatma: bu faqat oddiy to‘siq, havolani maxfiy saqlang. */
+const ADMIN_PASSWORD = "madina905";
+
+const $ = s => document.querySelector(s), esc = APP.esc, N = APP.total();
+const K = "spd905u_results";
+const load = () => { try { return JSON.parse(localStorage.getItem(K)) || []; } catch(e){ return []; } };
+const save = a => { try { localStorage.setItem(K, JSON.stringify(a)); } catch(e){} };
+let tab = "res", sortBy = "pct", q = "", msg = "", remote = [], dbErr = false, pasteVal = "";
+async function pull() {
+  if (!APP.dbOn()) return;
+  try {
+    const r = await APP.dbAll(); dbErr = false;
+    if (JSON.stringify(r) !== JSON.stringify(remote)) { remote = r; if (tab === "res" && $("#paste")) { pasteVal = $("#paste").value; renderResults(); } }
+  } catch (e) { dbErr = true; }
+  const st = $("#live"); if (st) st.innerHTML = liveText();
+}
+const liveText = () => !APP.dbOn() ? "⚪ Firebase ulanmagan — kodlarni qo‘lda joylang" : dbErr ? "🔴 Bazaga ulanib bo‘lmadi" : "🟢 Jonli: natijalar avtomatik yangilanadi";
+
+function boot() {
+  let ok = false; try { ok = sessionStorage.getItem("spd905u_admin") === "1"; } catch(e){}
+  ok ? render() : login();
+}
+function login(err) {
+  $("#app").innerHTML = `<div class="narrow"><div class="card center">
+    <h2 style="margin-top:0">🔐 Admin kirishi</h2>
+    <div class="field"><input type="password" id="pw" placeholder="Parol"></div>
+    ${err ? `<div class="err">Parol noto‘g‘ri</div>` : ""}
+    <button class="btn block" id="in">Kirish</button></div></div>`;
+  const go = () => { if ($("#pw").value === ADMIN_PASSWORD) { try { sessionStorage.setItem("spd905u_admin","1"); } catch(e){} render(); } else login(true); };
+  $("#in").onclick = go; $("#pw").addEventListener("keydown", e => e.key === "Enter" && go());
+}
+
+function render() {
+  $("#app").innerHTML = `
+    <div class="tabs">
+      <button class="tab ${tab==="res"?"on":""}" data-t="res">📊 Natijalar</button>
+      <button class="tab ${tab==="qa"?"on":""}" data-t="qa">📚 Savollar va javoblar</button>
+    </div>
+    <div id="view"></div>`;
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => { tab = b.dataset.t; render(); });
+  tab === "res" ? renderResults() : renderQA();
+}
+
+/* ---------- Savollar va javoblar ---------- */
+function renderQA() {
+  let n = 0, html = "";
+  QUIZ.sections.forEach((title, si) => {
+    html += `<h2 class="sec-title">${si+1}-bo‘lim · ${esc(title)}</h2>`;
+    QUIZ.questions.filter(x => x.s === si).forEach(x => {
+      n++;
+      html += `<div class="card qa"><h3><span class="num">${n}</span><span>${esc(x.q)}</span></h3>` +
+        x.o.map((o, i) => ({o, i})).map(({o,i}, k) =>
+          `<div class="ans ${i===0?"ok":""}"><span class="k">${i===0?"✓":"•"}</span><span>${esc(o)}</span></div>`).join("") + `</div>`;
+    });
+  });
+  $("#view").innerHTML = `<div class="note center">Jami <b>${N}</b> ta savol. Yashil — to‘g‘ri javob. O‘quvchilarga variantlar har safar aralashtirib ko‘rsatiladi.</div>` + html;
+}
+
+/* ---------- Natijalar ---------- */
+function rows() {
+  const m = new Map(); load().forEach(r => m.set(r.i, r)); remote.forEach(r => m.set(r.i, r));
+  return [...m.values()].map(r => { const pct = Math.round(r.c / N * 100); return { ...r, pct, lv: APP.levelOf(pct) }; });
+}
+function renderResults() {
+  const all = rows();
+  let list = all.filter(r => r.n.toLowerCase().includes(q.toLowerCase()));
+  const cmp = { pct:(a,b)=>b.pct-a.pct||a.t-b.t, name:(a,b)=>a.n.localeCompare(b.n), time:(a,b)=>a.t-b.t, date:(a,b)=>b.d-a.d };
+  list.sort(cmp[sortBy]);
+  const avg = all.length ? Math.round(all.reduce((s,r)=>s+r.pct,0)/all.length) : 0;
+  const best = all.length ? Math.max(...all.map(r=>r.pct)) : 0;
+  const dist = APP_LEVELS_COUNT(all);
+
+  $("#view").innerHTML = `
+    <div class="note center" id="live">${liveText()}</div>
+    <details class="card" ${APP.dbOn() ? "" : "open"}><summary><b>📥 Natijani qo‘lda qo‘shish (kod orqali)</b></summary>
+      <p class="small-note" style="max-width:none">O‘quvchilar yuborgan kodlarni (Telegram xabarlarini shundayligicha ham bo‘ladi) shu yerga joylang. Har bir qatorga bittadan yoki hammasini birdan tashlashingiz mumkin.</p>
+      <textarea id="paste" rows="3" placeholder="SPD905U.eyJpIjoi...">${esc(pasteVal)}</textarea>
+      <div class="row" style="justify-content:flex-start"><button class="btn" id="add">Qo‘shish</button></div>
+      <div id="msg">${msg}</div>
+    </details>
+
+    <div class="sum">
+      <div class="stat"><b>${all.length}</b><small>ishlagan o‘quvchi</small></div>
+      <div class="stat"><b>${avg}%</b><small>o‘rtacha natija</small></div>
+      <div class="stat"><b>${best}%</b><small>eng yuqori</small></div>
+      <div class="stat"><b>${all.filter(r=>r.pct>=75).length}</b><small>yuqori (75%+)</small></div>
+    </div>
+    <div class="card">
+      <b>Darajalar bo‘yicha taqsimot</b>
+      <div class="dist">${LEVELS.map(l => `<i class="${l.key}" style="width:${all.length? dist[l.key]/all.length*100:0}%;background:var(--c)"></i>`).join("")}</div>
+      <div class="legend">${LEVELS.map(l => `<span class="${l.key}"><b>${l.label}</b> (${l.min}%${l.min===90?"–100":""}) — ${dist[l.key]} ta</span>`).join("")}</div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="🔎 Ism bo‘yicha qidirish" value="${esc(q)}">
+      <select id="sort" style="width:auto">
+        <option value="pct" ${sortBy==="pct"?"selected":""}>Foiz bo‘yicha</option>
+        <option value="name" ${sortBy==="name"?"selected":""}>Ism bo‘yicha</option>
+        <option value="time" ${sortBy==="time"?"selected":""}>Vaqt bo‘yicha</option>
+        <option value="date" ${sortBy==="date"?"selected":""}>Oxirgilari birinchi</option>
+      </select>
+      <button class="btn small ghost" id="csv">⬇️ CSV</button>
+      <button class="btn small ghost" id="clr">🗑 Hammasini tozalash</button>
+    </div>
+
+    <div class="tablewrap"><table class="stat">
+      <thead><tr><th>#</th><th>Ism familiya</th><th>To‘g‘ri</th><th>Vaqt</th><th>Foiz</th><th>Daraja</th><th>Izoh</th><th></th></tr></thead>
+      <tbody>${list.length ? list.map((r,i) => `
+        <tr>
+          <td>${i+1}</td>
+          <td><b>${esc(r.n)}</b>${r.ab ? `<br><small style="color:var(--lo)">testdan chiqib ketgan</small>` : ""}${r.l ? `<br><small style="color:var(--mid)">tabdan chiqqan: ${r.l} marta</small>` : ""}</td>
+          <td>${r.c} / ${N}</td>
+          <td>${APP.fmtTime(r.t)}</td>
+          <td><span class="pill ${r.lv.tier}">${r.pct}%</span></td>
+          <td><span class="lvl ${r.lv.key}">${r.lv.label}</span></td>
+          <td class="small-note">${esc(r.lv.note)}</td>
+          <td><button class="btn small ghost" data-del="${esc(r.i)}" title="O‘chirish">✕</button></td>
+        </tr>`).join("") : `<tr><td colspan="8" class="empty">Hozircha natija yo‘q. Yuqoridagi maydonga o‘quvchilar kodlarini joylang.</td></tr>`}</tbody>
+    </table></div>`;
+
+  $("#add").onclick = importCodes;
+  $("#search").oninput = e => { q = e.target.value; renderResults(); const s = $("#search"); s.focus(); s.setSelectionRange(q.length, q.length); };
+  $("#sort").onchange = e => { sortBy = e.target.value; renderResults(); };
+  $("#csv").onclick = () => exportCSV(list);
+  $("#clr").onclick = async () => { if (confirm("Barcha natijalar o‘chiriladi. Davom etasizmi?")) { save([]); remote = []; msg = ""; pasteVal = ""; if (APP.dbOn()) await APP.dbClear().catch(()=>{}); renderResults(); } };
+  document.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (confirm("Bu natija o‘chirilsinmi?")) { save(load().filter(r => r.i !== b.dataset.del)); remote = remote.filter(r => r.i !== b.dataset.del); if (APP.dbOn()) await APP.dbDel(b.dataset.del).catch(()=>{}); renderResults(); } });
+}
+function APP_LEVELS_COUNT(all) { const o = {}; LEVELS.forEach(l => o[l.key] = 0); all.forEach(r => o[r.lv.key]++); return o; }
+
+function importCodes() {
+  const text = $("#paste").value, found = text.match(/SPD905U\.[A-Za-z0-9_\-]+/g) || [];
+  const cur = load(), ids = new Set(cur.map(r => r.i));
+  let added = 0, dup = 0, bad = 0;
+  found.forEach(c => {
+    const o = APP.decode(c);
+    if (!o) return bad++;
+    if (ids.has(o.i)) return dup++;
+    ids.add(o.i); cur.push(o); added++;
+  });
+  save(cur);
+  msg = !found.length ? `<div class="err">Kod topilmadi. «SPD905U.» bilan boshlanadigan kodni joylang.</div>`
+    : `<div class="note">✅ Qo‘shildi: <b>${added}</b>${dup ? ` · takror: ${dup}` : ""}${bad ? ` · yaroqsiz: ${bad}` : ""}</div>`;
+  pasteVal = "";
+  renderResults();
+}
+function exportCSV(list) {
+  const lines = [["№","Ism familiya","To'g'ri","Jami","Vaqt","Foiz","Daraja","Tabdan chiqish","Chiqib ketgan"]]
+    .concat(list.map((r,i) => [i+1, r.n, r.c, N, APP.fmtTime(r.t), r.pct+"%", r.lv.label, r.l, r.ab ? "ha" : "yo'q"]));
+  const csv = "﻿" + lines.map(l => l.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"})); a.download = "natijalar.csv"; a.click();
+}
+boot();
+pull(); setInterval(pull, 5000);
+</script>
+</body>
+</html>

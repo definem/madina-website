@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bilim sinovi — SPD 905u</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <div class="flower">🌸</div>
+  <span class="tag">Bilim sinovi · 30 ta savol</span>
+  <h1><em>Nerv sistemasi</em>, analizatorlar va yurak-qon tomir tizimi</h1>
+  <p>Darsda o‘quvchilar bilimini tekshirish uchun tayyorlangan onlayn test.</p>
+  <div class="by">Yaratuvchi: SPD 905u guruhi — Anvarova Madinaxon</div>
+  <div class="divider"></div>
+</header>
+<main class="narrow" id="app"></main>
+<div class="footer">© SPD 905u · Anvarova Madinaxon</div>
+
+<script src="common.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = APP.esc, SEC = APP.secPerQuestion, LOCK = APP.lockMinutes * 60000;
+const K_RUN = "spd905u_run", K_DONE = "spd905u_done";
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem(k)); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} },
+  del(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+const shuffle = a => { a = a.slice(); for (let i = a.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; };
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+const Q = QUIZ.questions, N = Q.length;
+let run = null, timerH = null, locked = false;
+
+/* ---------- Kirish nuqtasi ---------- */
+function boot() {
+  const r = store.get(K_RUN);
+  if (r) { run = r; finish(true); return; }          // test yarim qolgan (chiqib ketgan) → yakunlanadi va bloklanadi
+  const d = store.get(K_DONE);
+  if (d && d.until > Date.now()) return showLocked(d);
+  if (d) store.del(K_DONE);
+  showWelcome();
+}
+
+/* ---------- 1. Ism va qoidalar ---------- */
+function showWelcome(msg) {
+  $("#app").innerHTML = `
+    <div class="card">
+      <ul class="rules">
+        <li>📝 <span><b>${N} ta savol</b>, har biri 4 ta variantli.</span></li>
+        <li>⏱ <span>Har bir savolga <b>${SEC} soniya</b> beriladi. Vaqt tugasa, keyingi savolga o‘tiladi.</span></li>
+        <li>🔀 <span>Savollar va variantlar har kimda <b>turlicha tartibda</b> chiqadi.</span></li>
+        <li>🚫 <span>Orqaga qaytib bo‘lmaydi. Testdan <b>chiqib ketsangiz</b> yoki sahifani yangilasangiz, test yakunlanadi.</span></li>
+        <li>🔒 <span>Test tugagach, <b>${APP.lockMinutes} daqiqa</b> davomida qayta ishlab bo‘lmaydi.</span></li>
+      </ul>
+      <div class="warn">⚠️ Iltimos, o‘z <u>ism va familiyangizni</u> to‘liq yozing. Aks holda natijangiz qabul qilinmaydi!</div>
+      <div class="field"><label for="name">Ism va familiyangiz</label>
+        <input type="text" id="name" placeholder="Masalan: Aliyeva Madina" autocomplete="name" maxlength="60"></div>
+      <div id="err">${msg ? `<div class="err">${esc(msg)}</div>` : ""}</div>
+      <button class="btn block" id="go">Testni boshlash ✨</button>
+    </div>`;
+  $("#go").onclick = begin;
+  $("#name").addEventListener("keydown", e => { if (e.key === "Enter") begin(); });
+}
+function cleanName(s) {
+  s = String(s||"").replace(/\s+/g," ").trim();
+  return s.split(" ").map(w => w.charAt(0).toLocaleUpperCase("uz") + w.slice(1)).join(" ");
+}
+function begin() {
+  const name = cleanName($("#name").value);
+  const ok = /^[\p{L}'‘’ʻʼ`.\-]{2,}(\s[\p{L}'‘’ʻʼ`.\-]{2,})+$/u.test(name);
+  if (!ok) { $("#err").innerHTML = `<div class="err">Ism va familiyangizni to‘liq yozing (kamida 2 ta so‘z, faqat harflar).</div>`; return; }
+  if (!confirm(`Ismingiz: «${name}»\n\nTo‘g‘ri yozilganmi? Keyin o‘zgartirib bo‘lmaydi.`)) return;
+  const order = shuffle([...Q.keys()]);
+  const opts = {}; order.forEach(qi => opts[qi] = shuffle([0,1,2,3]));
+  run = { id: uid(), name, order, opts, i: 0, ans: new Array(N).fill(null), startedAt: Date.now(), leaves: 0 };
+  store.set(K_RUN, run);
+  showQuestion();
+}
+
+/* ---------- 2. Savollar ---------- */
+function showQuestion() {
+  if (run.i >= N) return finish(false);
+  locked = false;
+  const qi = run.order[run.i], q = Q[qi], ord = run.opts[qi];
+  const letters = ["A","B","C","D"];
+  $("#app").innerHTML = `
+    <div class="qtop"><span>Savol ${run.i+1} / ${N}</span><span class="timer" id="tm">⏱ <span id="tn">${SEC}</span></span></div>
+    <div class="bar"><i style="width:${run.i/N*100}%"></i></div>
+    <div class="bar time"><i id="tb" style="width:100%"></i></div>
+    <div class="card qcard">
+      <h2>${esc(q.q)}</h2>
+      ${ord.map((oi, k) => `<button class="opt" data-o="${oi}"><span class="k">${letters[k]}</span><span>${esc(q.o[oi])}</span></button>`).join("")}
+      <div class="flash" id="fl"></div>
+    </div>`;
+  document.querySelectorAll(".opt").forEach(b => b.onclick = () => answer(+b.dataset.o, b));
+  const deadline = Date.now() + SEC * 1000;
+  clearInterval(timerH);
+  timerH = setInterval(() => {
+    const left = Math.max(0, deadline - Date.now());
+    $("#tn").textContent = Math.ceil(left/1000);
+    $("#tb").style.width = (left/(SEC*1000)*100) + "%";
+    $("#tm").classList.toggle("danger", left <= 5000);
+    if (left <= 0) { clearInterval(timerH); timeUp(); }
+  }, 100);
+  window.scrollTo(0, 0);
+}
+function lockOpts(){ document.querySelectorAll(".opt").forEach(b => b.disabled = true); }
+function answer(oi, btn) {
+  if (locked) return; locked = true; clearInterval(timerH);
+  btn.classList.add("sel"); lockOpts();
+  run.ans[run.order[run.i]] = oi;      // 0 = to‘g‘ri variant
+  next(450);
+}
+function timeUp() {
+  if (locked) return; locked = true; lockOpts();
+  $("#fl").textContent = "⏰ Vaqt tugadi!";
+  next(700);
+}
+function next(delay) { run.i++; store.set(K_RUN, run); setTimeout(showQuestion, delay); }
+
+/* Tabdan chiqib ketishni sanash */
+document.addEventListener("visibilitychange", () => {
+  if (run && document.visibilityState === "hidden") {
+    run.leaves = (run.leaves || 0) + 1; store.set(K_RUN, run);
+  }
+});
+document.addEventListener("contextmenu", e => { if (run) e.preventDefault(); });
+document.addEventListener("copy", e => { if (run) e.preventDefault(); });
+
+/* ---------- 3. Natija ---------- */
+function finish(abandoned) {
+  clearInterval(timerH);
+  const correct = run.ans.filter(a => a === 0).length;
+  const answered = run.ans.filter(a => a !== null).length;
+  const secs = Math.round((Math.min(Date.now(), run.startedAt + N*SEC*1000 + 5000) - run.startedAt) / 1000);
+  const res = { i: run.id, n: run.name, c: correct, t: secs, l: run.leaves || 0, ab: abandoned ? 1 : 0, d: Date.now() };
+  const done = { until: Date.now() + LOCK, res, code: APP.encode(res), answered };
+  store.set(K_DONE, done); store.del(K_RUN); run = null;
+  showResult(done, abandoned);
+}
+function showResult(d, abandoned) {
+  const r = d.res, pct = Math.round(r.c / N * 100), lv = APP.levelOf(pct);
+  const ringColor = lv.tier === "high" ? "#1f9d5c" : lv.tier === "mid" ? "#e9b949" : "#d63a62";
+  const text = `Test natijasi — ${r.n}\n${r.c}/${N} (${pct}%)\n${d.code}`;
+  $("#app").innerHTML = `
+    <div class="card center">
+      <h2 style="margin-top:0">${esc(r.n)}</h2>
+      ${abandoned ? `<div class="warn">Siz testdan chiqib ketdingiz — test yakunlandi.</div>` : ""}
+      <div class="ring" style="--p:${pct};--c:${ringColor}"><span>${pct}%</span></div>
+      <span class="lvl ${lv.key}">${lv.label}</span>
+      <div class="stats">
+        <div class="stat"><b>${r.c} / ${N}</b><small>to‘g‘ri javob</small></div>
+        <div class="stat"><b>${APP.fmtTime(r.t)}</b><small>sarflangan vaqt</small></div>
+      </div>
+      <div class="notebox ${lv.tier}">${lv.note}</div>
+      ${APP.dbOn() ? `<div class="note" id="snd" style="text-align:left">⏳ Natijangiz o‘qituvchiga yuborilmoqda…</div>
+      <details style="text-align:left;margin-top:8px"><summary class="small-note" style="cursor:pointer">Yuborilmasa — qo‘lda yuborish</summary>` : ""}
+      <div class="note" style="text-align:left">📤 <b>Natijangizni o‘qituvchiga yuboring:</b> pastdagi kodni nusxalab yuboring yoki Telegram tugmasini bosing.</div>
+      <div class="codebox" id="code">${esc(d.code)}</div>
+      <div class="row">
+        <button class="btn" id="cp">📋 Kodni nusxalash</button>
+        <a class="btn ghost" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(" ")}&text=${encodeURIComponent(text)}">✈️ Telegram orqali yuborish</a>
+      </div>
+      ${APP.dbOn() ? `</details>` : ""}
+      <p class="small-note" style="margin:14px auto 0" id="lk"></p>
+    </div>`;
+  $("#cp").onclick = async () => {
+    try { await navigator.clipboard.writeText(d.code); } catch(e) {
+      const s = getSelection(), rg = document.createRange(); rg.selectNodeContents($("#code")); s.removeAllRanges(); s.addRange(rg); document.execCommand("copy");
+    }
+    $("#cp").textContent = "✅ Nusxalandi";
+  };
+  tickLock(d);
+  if (APP.dbOn()) sendResult(d);
+  window.scrollTo(0, 0);
+}
+async function sendResult(d) {
+  const el = $("#snd"); if (!el) return;
+  if (d.sent) { el.className = "notebox high"; el.textContent = "✅ Natijangiz o‘qituvchiga yuborildi."; return; }
+  try {
+    await APP.dbPut(d.res); d.sent = 1; store.set(K_DONE, d);
+    el.className = "notebox high"; el.textContent = "✅ Natijangiz o‘qituvchiga yuborildi.";
+  } catch (e) {
+    el.className = "err"; el.innerHTML = "Natija yuborilmadi (internetni tekshiring). <button class=\"btn small\" id=\"rt\">Qayta yuborish</button>";
+    $("#rt").onclick = () => { el.className = "note"; el.textContent = "⏳ Yuborilmoqda…"; sendResult(d); };
+  }
+}
+function tickLock(d) {
+  const el = $("#lk"); if (!el) return;
+  const upd = () => {
+    const left = d.until - Date.now();
+    if (left <= 0) { store.del(K_DONE); location.reload(); return; }
+    el.textContent = `🔒 Qayta ishlash ${APP.fmtTime(left/1000)} dan keyin ochiladi.`;
+  };
+  upd(); setInterval(upd, 1000);
+}
+function showLocked(d) {
+  showResult(d, false);
+  const c = $("#app .card"); c.insertAdjacentHTML("afterbegin", `<div class="note" style="text-align:left">Siz bu testni allaqachon ishlab bo‘lgansiz. Natijangiz quyida.</div>`);
+}
+boot();
+</script>
+</body>
+</html>
